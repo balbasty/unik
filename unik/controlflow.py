@@ -2,10 +2,9 @@
 import tensorflow as tf
 import numpy as np
 
-from .magik import *
-from .types import *
-from ._utils import pop
-
+from .magik import tensor_compat
+from .types import has_tensor
+from .shapes import shape
 # `cond` is is its own file to break cross-dependencies.
 from ._cond import cond
 
@@ -117,7 +116,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=None, back_prop=True,
             return dims[0]
         return None
 
-    if has_tf_tensor(elems):
+    if has_tensor(elems, 'tf'):
         return tf.map_fn(fn, elems, dtype, parallel_iterations, back_prop,
                          swap_memory, infer_shape, name)
     else:

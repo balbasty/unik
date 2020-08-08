@@ -5,6 +5,17 @@ from .indexing import *
 from .magik import *
 from .magik_helpers import *
 from .math import *
-from .shape import *
+from .shapes import *
 from .types import *
 from .various import *
+
+from . import alloc
+from . import controlflow
+from . import debug
+from . import indexing
+from . import magik
+from . import magik_helpers
+from . import math
+from . import shapes
+from . import types
+from . import various

@@ -2,9 +2,11 @@
 import tensorflow as tf
 import numpy as np
 
-from .magik import *
-from .types import *
-from .shape import *
+from .magik import tensor_compat
+from .alloc import zeros_like
+from .types import has_tensor, as_tensor, cast, dtype
+from .shapes import shape, reshape, flatten, transpose, unstack
+from ._math_for_indexing import cumprod, minimum, maximum
 from ._utils import pop
 
 

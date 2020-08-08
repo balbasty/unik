@@ -1,13 +1,21 @@
 """Math / Linear algebra."""
 import tensorflow as tf
 import numpy as np
+import scipy as sp
 
-from .magik import *
-from .types import *
-from .shape import *
-from .controlflow import *
+from .magik import tensor_compat
+from .types import has_tensor, is_tensor, has_tf_tensor, as_tensor, cast
+from .shapes import rank, size, length, shape, expand_dims, \
+                    reshape, flatten, transpose, set_shape, \
+                    concat, stack, tile
+from .alloc import ones
+from .indexing import boolean_mask, gather
+from .controlflow import while_loop, cond
 from .various import name_tensor
-from ._utils import pop
+
+
+# These functions are defined in another file to avoid cross dependencies
+from ._math_for_indexing import cumprod, minimum, maximum
 
 
 @tensor_compat
@@ -127,36 +135,6 @@ def cumsum(input, axis=None, dtype=None, exclusive=False, reverse=False,
         return input
 
 
-@tensor_compat
-def cumprod(input, axis=None, dtype=None, exclusive=False, reverse=False,
-            name=None):
-    """Cumulative product across an axis."""
-    if has_tf_tensor(input):
-        input = cast(input, dtype)
-        if axis is None:
-            input = tf.reshape(input, [-1])
-            axis = 0
-        return tf.math.cumprod(input, axis, exclusive=exclusive,
-                               reverse=reverse, name=name)
-    else:
-        input = np.asarray(input)
-        if axis is None:
-            input = input.flatten()
-            axis = 0
-        if reverse:
-            input = np.flip(input, axis=axis)
-        if exclusive:
-            input = np.take(input, range(shape(input)[axis] - 1), axis=axis)
-        input = np.cumprod(input, axis, dtype=dtype)
-        if exclusive:
-            pad = np.zeros((input.ndim, 2), dtype='int')
-            pad[axis, 0] = 1
-            input = np.pad(input, pad, constant_values=1)
-        if reverse:
-            input = np.flip(input, axis)
-        return input
-
-
 def sum_iter(iterable, start=0, inplace=True):
     """Compute the product of a series of elements.
 
@@ -211,6 +189,29 @@ def prod_iter(iterable, start=1, inplace=False):
     return prod_of_values
 
 
+def matmul_iter(iterable, start=None):
+    """Compute the matrix product of a series of elements.
+
+    This function works with any type that implements __mul__
+    (or __imul__ if inplace is True). In particular, it works with
+    tf.Tensor objects.
+
+    Parameters
+    ----------
+    iterable : series of elements
+    start : starting value, default=eye
+
+    Returns
+    -------
+    prod_of_values : matrix product of the elements
+
+    """
+    accumulation = start
+    for value in iterable:
+        accumulation = value if accumulation is None else accumulation @ value
+    return accumulation
+
+
 @tensor_compat
 def min(input, axis=None, keepdims=False, name=None):
     """Minimum of a tensor / array along an axis."""
@@ -227,24 +228,6 @@ def max(input, axis=None, keepdims=False, name=None):
         return tf.math.reduce_max(input, axis, keepdims, name)
     else:
         return np.max(input, axis=axis, keepdims=keepdims)
-
-
-@tensor_compat
-def minimum(x, y, name=None):
-    """Minimum of two tensors / arrays."""
-    if has_tf_tensor([x, y]):
-        return tf.math.minimum(x, y, name)
-    else:
-        return np.minimum(x, y)
-
-
-@tensor_compat
-def maximum(x, y, name=None):
-    """Maximum of two tensors / arrays."""
-    if has_tf_tensor([x, y]):
-        return tf.math.maximum(x, y, name)
-    else:
-        return np.maximum(x, y)
 
 
 @tensor_compat
@@ -726,5 +709,25 @@ def _permutations(input, output_shape):
     return perms
 
 
+def expm(input, name=None):
+    """Matrix exponential of (a field of) tensors / arrays.
+
+    WARNING: tf supports fields of matrices but np only support pure
+             matrices (rank(input) == 2).
+    """
+    if is_tensor(input, 'tf'):
+        return tf.linalg.expm(input, name=name)
+    else:
+        return sp.linalg.expm(input)
 
 
+def logm(input, name=None):
+    """Matrix logarithm of (a field of) tensors / arrays.
+
+    WARNING: tf supports fields of matrices but np only support pure
+             matrices (rank(input) == 2).
+    """
+    if is_tensor(input, 'tf'):
+        return tf.linalg.logm(input, name=name)
+    else:
+        return sp.linalg.logm(input)

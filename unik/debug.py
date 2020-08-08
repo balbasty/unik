@@ -2,15 +2,12 @@
 import tensorflow as tf
 import numpy as np
 
-from .magik import *
-from .types import *
-from .shape import *
-from ._utils import pop
+from .magik import tensor_compat
 
 
 @tensor_compat
 def assert_(cond, data=None, message=None, summarize=None, name=None,
-            error_class=tf.errors.InvalidArgumentError):
+            error_class=ValueError):
     """Assert that a condition is true.
 
     Parameters

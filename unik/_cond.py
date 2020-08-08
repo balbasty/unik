@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from .magik import *
+from .magik import tensor_compat
 
 
 @tensor_compat

@@ -116,12 +116,24 @@ def convert_dtype(dtype, otype=None):
     """
     if dtype is None:
         return None
-    if otype is None:
-        return dtype
-    elif otype in ('np', np.dtype):
+    if otype in ('np', np.dtype):
         if isinstance(dtype, tf.dtypes.DType):
             return dtype.as_numpy_dtype
         else:
             return np.dtype(dtype)
     elif otype in ('tf', tf.dtypes.DType):
-        return tf.as_dtype(dtype)
+        if isinstance(dtype, tf.dtypes.DType):
+            return dtype
+        else:
+            # Tensorflow does not understand platform-specific types
+            # (such as 'int'), while numpy does and return the
+            # appropriate type (e.g., 'int32' or 'int64'). That's why
+            # I convert to appropriatenp.dtype before converting
+            # to tf.dtype.
+            #
+            # This might not be optimal, because the choice is made
+            # during graph creation, so on CPU. The best type on GPU
+            # may differ from the best type on CPU.
+            return tf.as_dtype(np.dtype(dtype))
+    else:
+        return otype(dtype)

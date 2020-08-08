@@ -2,9 +2,10 @@
 import tensorflow as tf
 import numpy as np
 
-from .magik import *
-from .types import *
-from .shape import *
+from .magik import tensor_compat
+from .types import has_tensor, is_tensor, convert_dtype, cast, as_tensor
+from .shapes import length, tile, stack, shape, rank
+from .controlflow import cond
 from ._utils import pop
 
 

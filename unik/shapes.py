@@ -3,7 +3,8 @@ import tensorflow as tf
 import numpy as np
 
 from .magik import tensor_compat
-from .types import *
+from .types import cast, is_tensor, has_tensor, as_tensor, convert_dtype
+from .various import name_tensor
 from ._cond import cond
 
 

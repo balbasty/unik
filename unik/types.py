@@ -2,13 +2,13 @@
 import tensorflow as tf
 import numpy as np
 
-from .magik import *
+from .magik import tensor_compat
 from .various import name_tensor
 from ._utils import _apply_nested
 
 
 # These are defined in a different file to avoid cross-dependencies
-from ._tensor_types import is_tensor, has_tensor
+from ._tensor_types import is_tensor, has_tensor, convert_dtype
 
 
 def has_tf_tensor(input):
