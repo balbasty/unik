@@ -3,19 +3,28 @@ import tensorflow as tf
 import numpy as np
 import scipy as sp
 
-from .magik import tensor_compat
+from .magik import tensor_compat, Argument, Value
 from .types import has_tensor, is_tensor, has_tf_tensor, as_tensor, cast
 from .shapes import rank, size, length, shape, expand_dims, \
                     reshape, flatten, transpose, set_shape, \
                     concat, stack, tile
-from .alloc import ones
+from .alloc import ones, range
 from .indexing import boolean_mask, gather
 from .controlflow import while_loop, cond
 from .various import name_tensor
 
 
+__all__ = ['cumprod', 'minimum', 'maximum', 'cumsum', 'sum', 'prod',
+           'any', 'all', 'min', 'max', 'tensordot', 'round', 'floor',
+           'ceil', 'clip', 'sum_iter', 'prod_iter', 'matmul_iter',
+           'mean', 'argmin', 'argmax', 'invert_permutation', 'matmul',
+           'lstsq', 'lmdiv', 'rmdiv', 'svd', 'factorial', 'unique',
+           'logm', 'expm', 'permutations', 'cartesian', 'sqrt']
+
+
 # These functions are defined in another file to avoid cross dependencies
-from ._math_for_indexing import cumprod, minimum, maximum
+from ._math_for_indexing import cumprod, minimum, maximum, sqrt
+from ._math_reduce import sum, prod, all, any, mean, cumsum, min, max
 
 
 @tensor_compat
@@ -39,7 +48,7 @@ def tensordot(a, b, axes, name=None):
         rank(c) = rank(a) + rank(b) - K
 
     """
-    if tf.executing_eagerly() or tf.is_tensor(a) or tf.is_tensor(b):
+    if has_tensor([a, b], 'tf'):
         return tf.tensordot(a, b, axes, name=name)
     else:
         return np.tensordot(a, b, axes)
@@ -47,8 +56,26 @@ def tensordot(a, b, axes, name=None):
 
 @tensor_compat
 def round(input, decimals=0, name=None):
-    """Round a tensor / array."""
-    if tf.is_tensor(input) or tf.is_tensor(decimals):
+    """Round a tensor to the given number of decimals.
+
+    Rounds half to even. Also known as bankers rounding.
+
+    Parameters
+    ----------
+    input : tensor_like
+        Input tensor.
+    decimals : () tensor_like, default=0
+        Number of decimals to keep.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    rounded : tensor or array
+        Rounded tensor.
+
+    """
+    if has_tensor([input, decimals], 'tf'):
         decimals = 10 ** decimals
         input = tf.round(input * decimals) / decimals
         input = name_tensor(input, name)
@@ -59,8 +86,21 @@ def round(input, decimals=0, name=None):
 
 @tensor_compat(map_batch=False)
 def floor(input, name=None):
-    """Floor a tensor / array."""
-    if tf.is_tensor(input):
+    """Floor of a tensor.
+
+    Parameters
+    ----------
+    input : tensor_like
+        Input tensor.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    floored : tensor or array
+
+    """
+    if is_tensor(input, 'tf'):
         input = tf.math.floor(input, name=name)
     else:
         input = np.floor(input)
@@ -69,8 +109,21 @@ def floor(input, name=None):
 
 @tensor_compat(map_batch=False)
 def ceil(input, name=None):
-    """Ceil a tensor / array."""
-    if tf.is_tensor(input):
+    """Ceiling of a tensor.
+
+    Parameters
+    ----------
+    input : tensor_like
+        Input tensor.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    ceiled : tensor or array
+
+    """
+    if is_tensor(input, 'tf'):
         input = tf.math.ceil(input, name=name)
     else:
         input = np.ceil(input)
@@ -79,60 +132,28 @@ def ceil(input, name=None):
 
 @tensor_compat
 def clip(input, clip_min, clip_max, name=None):
-    """Clip a tensor / array."""
-    if tf.is_tensor(input) or tf.is_tensor(clip_min) or tf.is_tensor(clip_max):
-        input = tf.clip_by_value(input, clip_min, clip_max, name=name)
+    """Clip a tensor between two values
+
+    Parameters
+    ----------
+    input : tensor_like
+        Input tensor.
+    clip_min : () tensor_like or None
+        Minimum value to clip by.
+    clip_max : () tensor_like or None
+        Maximum value to clip by.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    clipped : tensor or array
+
+    """
+    if has_tensor([input, clip_min, clip_max], 'tf'):
+        return tf.clip_by_value(input, clip_min, clip_max, name=name)
     else:
-        input = np.clip(input, clip_min, clip_max)
-    return input
-
-
-@tensor_compat
-def sum(input, axis=None, keepdims=False, name=None):
-    """Sum across an axis"""
-    if has_tf_tensor(input):
-        return tf.math.reduce_sum(input, axis, keepdims=keepdims, name=name)
-    else:
-        return np.sum(input, axis, keepdims=keepdims)
-
-
-@tensor_compat
-def prod(input, axis=None, keepdims=False, name=None):
-    """Product across an axis"""
-    if has_tf_tensor(input):
-        return tf.math.reduce_prod(input, axis, keepdims=keepdims, name=name)
-    else:
-        return np.prod(input, axis, keepdims=keepdims)
-
-
-@tensor_compat
-def cumsum(input, axis=None, dtype=None, exclusive=False, reverse=False,
-           name=None):
-    """Cumulative sum across an axis."""
-    if has_tf_tensor(input):
-        input = cast(input, dtype)
-        if axis is None:
-            input = tf.reshape(input, [-1])
-            axis = 0
-        return tf.math.cumsum(input, axis, exclusive=exclusive,
-                              reverse=reverse, name=name)
-    else:
-        input = np.asarray(input)
-        if axis is None:
-            input = input.flatten()
-            axis = 0
-        if reverse:
-            input = np.flip(input, axis=axis)
-        if exclusive:
-            input = np.take(input, range(shape(input)[axis] - 1), axis=axis)
-        input = np.cumsum(input, axis, dtype=dtype)
-        if exclusive:
-            pad = np.zeros((input.dim, 2), dtype='int')
-            pad[axis, 0] = 1
-            input = np.pad(input, pad, constant_values=1)
-        if reverse:
-            input = np.flip(input, axis)
-        return input
+        return np.clip(input, clip_min, clip_max)
 
 
 def sum_iter(iterable, start=0, inplace=True):
@@ -212,27 +233,29 @@ def matmul_iter(iterable, start=None):
     return accumulation
 
 
-@tensor_compat
-def min(input, axis=None, keepdims=False, name=None):
-    """Minimum of a tensor / array along an axis."""
-    if tf.is_tensor(input):
-        return tf.math.reduce_min(input, axis, keepdims, name)
-    else:
-        return np.min(input, axis=axis, keepdims=keepdims)
-
-
-@tensor_compat
-def max(input, axis=None, keepdims=False, name=None):
-    """Maximum of a tensor / array along an axis."""
-    if tf.is_tensor(input):
-        return tf.math.reduce_max(input, axis, keepdims, name)
-    else:
-        return np.max(input, axis=axis, keepdims=keepdims)
-
-
-@tensor_compat
+@tensor_compat(return_dtype=Argument('dtype'))
 def argmin(input, axis=None, dtype='int64', name=None):
-    """Index of the minimum value along an axis."""
+    """Index of the minimum value along an axis.
+
+    Parameters
+    ----------
+    input : tensor_like
+        Input tensor.
+    axis : () tensor_like, default=None
+        Axis along which to extract the minimum index.
+        If None, work on the flattened tensor.
+    dtype : str or type, default='int64'
+        Data type of the returned index.
+    name : str, optional
+        Name for the operation.
+
+    Returns
+    -------
+    arg : tensor[dtype] or array[dtype]
+        Index of the minimum value along an axis.
+
+
+    """
     if is_tensor(input, 'tf'):
         return tf.math.argmin(input, axis=axis, output_type=dtype, name=name)
     else:
@@ -242,9 +265,29 @@ def argmin(input, axis=None, dtype='int64', name=None):
         return input
 
 
-@tensor_compat
+@tensor_compat(return_dtype=Argument('dtype'))
 def argmax(input, axis=None, dtype='int64', name=None):
-    """Index of the maximum value along an axis."""
+    """Index of the maximum value along an axis.
+
+    Parameters
+    ----------
+    input : tensor_like
+        Input tensor.
+    axis : () tensor_like, default=None
+        Axis along which to extract the maximum index.
+        If None, work on the flattened tensor.
+    dtype : str or type, default='int64'
+        Data type of the returned index.
+    name : str, optional
+        Name for the operation.
+
+    Returns
+    -------
+    arg : tensor[dtype] or array[dtype]
+        Index of the maximum value along an axis.
+
+
+    """
     if is_tensor(input, 'tf'):
         return tf.math.argmax(input, axis=axis, output_type=dtype, name=name)
     else:
@@ -256,7 +299,21 @@ def argmax(input, axis=None, dtype='int64', name=None):
 
 @tensor_compat
 def invert_permutation(perm, name=None):
-    """Invert a permutation."""
+    """Invert a permutation.
+
+    Parameters
+    ----------
+    perm : (length, ) tensor_like
+        A permutation vector. E.g., `[0, 2, 1]`.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    iperm : (length, ) tensor or array
+        The inverse permutation.
+
+    """
     if has_tf_tensor(perm):
         return tf.math.invert_permutation(perm, name=name)
     else:
@@ -270,19 +327,56 @@ def invert_permutation(perm, name=None):
 @tensor_compat
 def matmul(a, b, transpose_a=False, transpose_b=False,
            adjoint_a=False, adjoint_b=False, name=None):
-    """Matrix multiplication between two tensors / arrays."""
-    if has_tf_tensor([a, b]):
+    """Matrix multiplication between (fields of) matrices.
+
+    Parameters
+    ----------
+    a : (..., N, K) tensor_like
+        Left matrix.
+    b : (..., K, M) tensor_like
+        Right matrix.
+    transpose_a : bool, default=False
+        If True, transpose the last two dimensions of ``a``.
+    transpose_b : bool, default=False
+        If True, transpose the last two dimensions of ``b``.
+    adjoint_a : bool, default=False
+        If True, conjugate transpose the last two dimensions of ``a``.
+    adjoint_b : bool, default=False
+        If True, conjugate transpose the last two dimensions of ``b``.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    prod : (..., N, M) tensor or array
+        Matrix product ``a @ b``.
+
+    Broadcasting rules
+    ------------------
+    * Dimensions of length 1 may be prepended to either tensor.
+    * Tensors may be repeated along dimensions of length 1.
+
+    """
+    if has_tensor([a, b], 'tf'):
+        a = expand_dims(a, axis=0, ndim=maximum(0, rank(b)-rank(a)))
+        b = expand_dims(b, axis=0, ndim=maximum(0, rank(a)-rank(b)))
         return tf.linalg.matmul(a, b, transpose_a, transpose_b,
                                 adjoint_a, adjoint_b, name=name)
     else:
+        a = expand_dims(a, axis=0, ndim=maximum(0, rank(b)-rank(a)))
+        b = expand_dims(b, axis=0, ndim=maximum(0, rank(a)-rank(b)))
         if adjoint_a:
-            a = np.conjugate(np.transpose(a))
+            perm = concat((range(rank(a)-2), [-1, -2]))
+            a = np.conjugate(np.transpose(a, perm))
         elif transpose_a:
-            a = np.transpose(a)
+            perm = concat((range(rank(a)-2), [-1, -2]))
+            a = np.transpose(a, perm)
         if adjoint_b:
-            b = np.conjugate(np.transpose(b))
+            perm = concat((range(rank(b)-2), [-1, -2]))
+            b = np.conjugate(np.transpose(b, perm))
         elif transpose_b:
-            b = np.transpose(b)
+            perm = concat((range(rank(b)-2), [-1, -2]))
+            b = np.transpose(b, perm)
         return np.matmul(a, b)
 
 
@@ -291,59 +385,104 @@ mm = matmul
 
 
 @tensor_compat
-def lstsq(A, B, l2_regularizers=0.0, fast=True, rcond=None, name=None):
-    """Least-square solution of a linear system."""
-    if has_tf_tensor([A, B, l2_regularizers]):
-        return tf.linalg.lstsq(A, B, l2_regularizers=l2_regularizers,
+def lstsq(a, b, l2_regularizers=None, rcond=None, name=None):
+    r"""Least-square solution of a (field of) linear systems.
+
+    Parameters
+    ----------
+    a : (..., M, N) tensor_like
+        Left matrix.
+
+        .. np:: Fields not accepted.
+
+    b : (..., M, K) tensor_like
+        Right matrix.
+
+        .. np:: Fields not accepted.
+
+    l2_regularizers : () tensor_like[float], default=None
+        .. tf:: If not `None` an algorithm based on the
+                numerically robust complete orthogonal decomposition is
+                used. This computes the minimum-norm least-squares
+                solution, even when \\(A\\) is rank deficient. This path
+                is typically 6-7 times slower than the fast path
+                (when `l2_regularizers` is `None`).
+        .. np:: Not used.
+
+    rcond : float, default=None
+        .. np:: Cut-off ratio for small singular values of `a`.
+                For the purposes of rank determination, singular values
+                are treated as zero if they are smaller than `rcond`
+                times the largest singular value of `a`.
+                * If -1: use the machine precision.
+                * If None: use the machine precision times `max(M, N)`
+        .. tf:: Not used.
+
+    name : str, optional
+        Name for the operation.
+
+    Returns
+    -------
+    x : (..., N, K) tensor or array
+        Solution of the linear system, e.g., `a \ b`
+
+    """
+    if has_tf_tensor([a, b, l2_regularizers]):
+        if l2_regularizers is None:
+            l2_regularizers = 0.0
+            fast = False
+        else:
+            fast = True
+        l2_regularizers = cast(l2_regularizers, 'double')
+        return tf.linalg.lstsq(a, b, l2_regularizers=l2_regularizers,
                                fast=fast, name=name)
     else:
-        return np.linalg.lstsq(A, B, rcond=rcond)[0]
+        return np.linalg.lstsq(a, b, rcond=rcond)[0]
 
 
 @tensor_compat
-def lmdiv(A, B, l2_regularizers=0.0, fast=True, rcond=None, name='lmdiv'):
+def lmdiv(a, b, l2_regularizers=None, rcond=None, name='lmdiv'):
     r"""Left matrix division A\B.
 
     Parameters
     ----------
-    A : (M, [N]) tensor_like
-    B : (M, [K]) tensor_like
+    a : (M, [N]) tensor_like
+    b : (M, [K]) tensor_like
 
     Returns
     -------
     X : (N, [K]) tensor or array
 
     """
-    A = as_tensor(A)
-    B = as_tensor(B)
-    A = cond(rank(A) == 1, lambda: A[..., None], lambda: A)
-    X = lstsq(A, B, l2_regularizers=l2_regularizers, fast=fast,
-              rcond=rcond, name=name)
-    return X
+    a = as_tensor(a)
+    b = as_tensor(b)
+    a = cond(rank(a) == 1, lambda: a[..., None], lambda: a)
+    x = lstsq(a, b, l2_regularizers=l2_regularizers, rcond=rcond, name=name)
+    return x
 
 
 @tensor_compat
-def rmdiv(A, B, l2_regularizers=0.0, fast=True, rcond=None, name='rmdiv'):
+def rmdiv(a, b, l2_regularizers=None, rcond=None, name='rmdiv'):
     r"""Right matrix division A/B.
 
     Parameters
     ----------
-    A : (M, [N]) tensor_like
-    B : (K, [N]) tensor_like
+    a : (M, [N]) tensor_like
+    b : (K, [N]) tensor_like
 
     Returns
     -------
-    X : (M, K) tensor or array
+    x : (M, K) tensor or array
 
     """
-    A = as_tensor(A)
-    B = as_tensor(B)
-    A = cond(rank(A) == 1, lambda: A[..., None], lambda: A)
-    B = cond(rank(B) == 1, lambda: B[..., None], lambda: B)
-    A = transpose(A)
-    B = transpose(B)
-    return transpose(lstsq(B, A, l2_regularizers=l2_regularizers, fast=fast,
-                           rcond=rcond), name=name)
+    a = as_tensor(a)
+    b = as_tensor(b)
+    a = cond(rank(a) == 1, lambda: a[..., None], lambda: a)
+    b = cond(rank(b) == 1, lambda: b[..., None], lambda: b)
+    a = transpose(a)
+    b = transpose(b)
+    return transpose(lstsq(b, a, l2_regularizers=l2_regularizers, rcond=rcond),
+                     name=name)
 
 
 @tensor_compat
@@ -355,14 +494,19 @@ def svd(input, full_matrices=True, compute_uv=True,
     ----------
     input - (..., M, N) tensor_like
         Input (field of) matrices. Let P = minimum(M, N).
+
     full_matrices - bool, default=True
         If True, return full U and V matrices. Else, truncate columns at P.
-        WARNING: default is True (same as numpy // different from tf)
+
+        .. warning:: default is True (same as np // different from tf)
+
     compute_uv : bool, default=True
         If True, return U, S, V. Else return S.
+
     hermitian : bool, default=False
-        Assume that the input matrices are hermitian.
-        WARNING: Only used by the numpy implementation.
+        .. np:: Assume that the input matrices are hermitian.
+        .. tf:: Not used.
+
     name : str, optional
         Name for the operation.
 
@@ -375,8 +519,7 @@ def svd(input, full_matrices=True, compute_uv=True,
     V : (..., N, N) or  (..., N, P) tensor, if `compute_uv is True`
         Right singular vectors.
 
-        WARNING: Order is U, S, V (same as numpy),
-                 while tf's order is S, U, V.
+    ..warning:: Order is U, S, V (same as numpy), while tf's order is S, U, V.
 
     """
     input = as_tensor(input)
@@ -395,8 +538,22 @@ def svd(input, full_matrices=True, compute_uv=True,
 
 
 @tensor_compat
-def factorial(x):
-    """Factorial of a number."""
+def factorial(x, name=None):
+    """Factorial of a number.
+
+    .. tf:: Uses the exponential of log-gamma to compute the factorial.
+            This may lead to inaccuracies.
+
+    Parameters
+    ----------
+    x : tensor_like
+    name : str, optional
+
+    Returns
+    -------
+    factorial : tensor or array
+
+    """
     if is_tensor(x, 'tf'):
         input_dtype = x.dtype
         float_types = (tf.dtypes.float16, tf.dtypes.float32, tf.dtypes.float64)
@@ -406,7 +563,7 @@ def factorial(x):
                      tf.ones_like(x, shape=[1] * rank(x)),
                      tf.math.exp(tf.math.lgamma(x)))
         x = cast(x, input_dtype)
-        return x
+        return name_tensor(x, name)
     else:
         return np.math.factorial(x)
 
@@ -414,6 +571,36 @@ def factorial(x):
 @tensor_compat
 def unique(input, return_index=False, return_inverse=False,
            return_counts=False, index_dtype='int32', name=None):
+    """Return the unique values from a vector.
+
+    Parameters
+    ----------
+    input : (L,) tensor_like
+        Input vector.
+    return_index : bool, default=False
+        Also return the index of the first apparition of each element.
+        .. tf:: Not implemented.
+    return_inverse : bool, default=False
+        Also return indices that allow the initial vector to be rebuilt.
+    return_counts : bool, default=False
+        Also return the number of apparitions of each element.
+    index_dtype : str or type, default='int32'
+        Data type of the returned indices.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    unique : (K,) tensor or array
+        Unique elements of the input vector, ordered by first apparition.
+    index : (K,) tensor[index_dtype] or array[index_dtype]
+        First index of each unique element in the input vector.
+    inverse : (L,) tensor[index_dtype] or array[index_dtype]
+        Inverse mapping, such that `input = unique[inverse'
+    counts : (K,) tensor[index_dtype] or array[index_dtype]
+        Number of apparitions of each unique element.
+
+    """
     if has_tensor(input, 'tf'):
         if return_counts:
             values, indices, counts = \
@@ -445,10 +632,12 @@ def cartesian(input, shape=None, flatten=True):
     ----------
     input : vector_like or (*shape) tensor_like[vector_like]
         Values to sample to build the cartesian product.
+
     shape : int or vector_like[int], optional
         If not None, it represents the output shape, while input
         represents the set of possible values, which is shared across
         elements.
+
     flatten : bool, default=True
         If true, flatten the *arrangements part of the output shape.
 
@@ -709,6 +898,25 @@ def _permutations(input, output_shape):
     return perms
 
 
+@tensor_compat(map_batch=False)
+def exp(input, name=None):
+    """Element-wise exponential of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.exp(input, name=name)
+    else:
+        return np.exp(input)
+
+
+@tensor_compat(map_batch=False)
+def log(input, name=None):
+    """Element-wise Natural logarithm of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.log(input, name=name)
+    else:
+        return np.log(input)
+
+
+@tensor_compat
 def expm(input, name=None):
     """Matrix exponential of (a field of) tensors / arrays.
 
@@ -721,6 +929,7 @@ def expm(input, name=None):
         return sp.linalg.expm(input)
 
 
+@tensor_compat
 def logm(input, name=None):
     """Matrix logarithm of (a field of) tensors / arrays.
 

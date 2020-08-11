@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 from .magik import tensor_compat
-from .types import has_tensor, cast
+from .types import has_tensor, is_tensor, cast
 from .shapes import shape
 
 
@@ -44,6 +44,7 @@ def minimum(x, y, name=None):
     else:
         return np.minimum(x, y)
 
+
 @tensor_compat
 def maximum(x, y, name=None):
     """Maximum of two tensors / arrays."""
@@ -51,3 +52,12 @@ def maximum(x, y, name=None):
         return tf.math.maximum(x, y, name)
     else:
         return np.maximum(x, y)
+
+
+@tensor_compat(map_batch=False)
+def sqrt(input, name=None):
+    """Element-wise square-root of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.sqrt(input, name=name)
+    else:
+        return np.sqrt(input)
