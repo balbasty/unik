@@ -136,7 +136,9 @@ def result_dtype(*arrays_and_dtypes):
         Data types of the arguments.
 
     """
-    arrays_and_dtypes = [a.dtype if is_tensor(a, 'tf') else a
+    arrays_and_dtypes = [a.dtype if is_tensor(a, 'tf')
+                         else as_tensor(a) if isinstance(a, (list, tuple))
+                         else a
                          for a in arrays_and_dtypes]
     arrays_and_dtypes = [convert_dtype(dt, 'np')
                          if isinstance(dt, tf.dtypes.DType)

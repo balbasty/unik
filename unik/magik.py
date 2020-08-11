@@ -14,16 +14,16 @@ from ._utils import _apply_nested
 from ._tensor_types import is_tensor, has_tensor, convert_dtype
 
 
-_all__ = ['Value', 'Argument', 'tensor_compat']
+_all__ = ['Val', 'Arg', 'tensor_compat']
 
 
 # --- SYMBOLIC ---------------------------------------------------------
 
 
-class Value:
+class Val:
     """Compute a value based on the arguments of a function.
 
-    This object (along with `Argument`) allows functions of arguments
+    This object (along with `Arg`) allows functions of arguments
     to be defined symbolically, that is, before the values of the
     arguments are known. Their evaluation is deferred until the arguments
     are known.
@@ -35,17 +35,17 @@ class Value:
         return self.value_fn(func, args, kwargs)
 
 
-class Argument(Value):
+class Arg(Val):
     """Symbolic reference to the argument of a function.
 
     It will be evaluated at run time.
     """
 
     def _value_fn(self, func, args, kwargs):
-        """Generic `__call__` method for `Argument`s."""
+        """Generic `__call__` method for `Arg`s."""
         arg_value = get_argument_value(self.name, func, args, kwargs)
         if self.default_set and arg_value is self.default_trigger:
-            if isinstance(self.default, Value):
+            if isinstance(self.default, Val):
                 arg_value = self.default(func, args, kwargs)
             else:
                 arg_value = self.default
@@ -57,7 +57,7 @@ class Argument(Value):
         Parameters
         ----------
         name : str
-            Argument name.
+            Arg name.
         default : DefaultValue, optional
             Default value.
         default_trigger : default=None
@@ -124,15 +124,16 @@ def symbolik_helper(func):
 
         def implementation(f, fargs, fkwargs):
             # Evaluate all symbolic objects
-            apply = lambda x: (x(f, fargs, fkwargs) if isinstance(x, Value)
+            apply = lambda x: (x(f, fargs, fkwargs) if isinstance(x, Val)
                                else x)
             processed_args = _apply_nested(args, apply)
             processed_kwargs = _apply_nested(kwargs, apply)
             # Compute return type
             return func(*processed_args, **processed_kwargs)
 
-        return Value(implementation)
+        return Val(implementation)
 
+    return wrap
 
 
 # --- DECORATOR --------------------------------------------------------
@@ -152,9 +153,9 @@ def tensor_compat(map_batch=True, return_dtype=None):
         If True, when some inputs are Keras tensors, the underlying
         function is mapped to each element of the batch using tf.map_fn
 
-    return_dtype : (nested structure of) object or Value, optional
+    return_dtype : (nested structure of) object or Val, optional
         Datatype of the tensor(s) returned by the function. Can be a
-        `Value`, in which case it is evaluated at call time.
+        `Val`, in which case it is evaluated at call time.
         The nested structure of `return_dtype` should be the same as
         that returned by the function. That is, if the function returns
         a tuple of three tensors, return_dtype should have the form:
@@ -260,7 +261,7 @@ def tensor_compat(map_batch=True, return_dtype=None):
                 # Evaluate return_dtype if it is a symbolic value.
                 # It must be done before extracting keras tensors.
                 def evaluate(value):
-                    if isinstance(value, Value):
+                    if isinstance(value, Val):
                         return value(func, args, kwargs)
                     else:
                         return value

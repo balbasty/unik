@@ -3,8 +3,10 @@ import tensorflow as tf
 import numpy as np
 import scipy as sp
 
-from .magik import tensor_compat, Argument, Value
-from .types import has_tensor, is_tensor, has_tf_tensor, as_tensor, cast
+from .magik import tensor_compat, Arg, Val
+from . import symbolik
+from .types import has_tensor, is_tensor, has_tf_tensor, as_tensor, cast, \
+                   result_dtype, dtype
 from .shapes import rank, size, length, shape, expand_dims, \
                     reshape, flatten, transpose, set_shape, \
                     concat, stack, tile
@@ -18,8 +20,10 @@ __all__ = ['cumprod', 'minimum', 'maximum', 'cumsum', 'sum', 'prod',
            'any', 'all', 'min', 'max', 'tensordot', 'round', 'floor',
            'ceil', 'clip', 'sum_iter', 'prod_iter', 'matmul_iter',
            'mean', 'argmin', 'argmax', 'invert_permutation', 'matmul',
-           'lstsq', 'lmdiv', 'rmdiv', 'svd', 'factorial', 'unique',
-           'logm', 'expm', 'permutations', 'cartesian', 'sqrt']
+           'mm', 'lstsq', 'lmdiv', 'rmdiv', 'svd', 'factorial', 'unique',
+           'logm', 'expm', 'permutations', 'cartesian', 'sqrt',
+           'sin', 'asin', 'arcsin', 'sinh', 'asinh', 'arcsinh',
+           'cos', 'acos', 'arccos', 'cosh', 'acosh', 'arccosh']
 
 
 # These functions are defined in another file to avoid cross dependencies
@@ -27,7 +31,7 @@ from ._math_for_indexing import cumprod, minimum, maximum, sqrt
 from ._math_reduce import sum, prod, all, any, mean, cumsum, min, max
 
 
-@tensor_compat
+@tensor_compat(return_dtype=symbolik.result_dtype(Arg('a'), Arg('b')))
 def tensordot(a, b, axes, name=None):
     """Tensor dot product.
 
@@ -49,12 +53,15 @@ def tensordot(a, b, axes, name=None):
 
     """
     if has_tensor([a, b], 'tf'):
+        return_dtype = result_dtype(a, b)
+        a = cast(a, return_dtype)
+        b = cast(b, return_dtype)
         return tf.tensordot(a, b, axes, name=name)
     else:
         return np.tensordot(a, b, axes)
 
 
-@tensor_compat
+@tensor_compat(return_dtype=symbolik.dtype(Arg('input')))
 def round(input, decimals=0, name=None):
     """Round a tensor to the given number of decimals.
 
@@ -64,7 +71,7 @@ def round(input, decimals=0, name=None):
     ----------
     input : tensor_like
         Input tensor.
-    decimals : () tensor_like, default=0
+    decimals : () tensor_like[int], default=0
         Number of decimals to keep.
     name : str, optional
         A name for the operation.
@@ -76,7 +83,7 @@ def round(input, decimals=0, name=None):
 
     """
     if has_tensor([input, decimals], 'tf'):
-        decimals = 10 ** decimals
+        decimals = cast(10 ** decimals, dtype(input))
         input = tf.round(input * decimals) / decimals
         input = name_tensor(input, name)
     else:
@@ -130,7 +137,7 @@ def ceil(input, name=None):
     return input
 
 
-@tensor_compat
+@tensor_compat(return_dtype=symbolik.dtype(Arg('input')))
 def clip(input, clip_min, clip_max, name=None):
     """Clip a tensor between two values
 
@@ -151,6 +158,8 @@ def clip(input, clip_min, clip_max, name=None):
 
     """
     if has_tensor([input, clip_min, clip_max], 'tf'):
+        clip_min = cast(clip_min, dtype(input), keep_none=True)
+        clip_max = cast(clip_max, dtype(input), keep_none=True)
         return tf.clip_by_value(input, clip_min, clip_max, name=name)
     else:
         return np.clip(input, clip_min, clip_max)
@@ -233,7 +242,7 @@ def matmul_iter(iterable, start=None):
     return accumulation
 
 
-@tensor_compat(return_dtype=Argument('dtype'))
+@tensor_compat(return_dtype=Arg('dtype'))
 def argmin(input, axis=None, dtype='int64', name=None):
     """Index of the minimum value along an axis.
 
@@ -265,7 +274,7 @@ def argmin(input, axis=None, dtype='int64', name=None):
         return input
 
 
-@tensor_compat(return_dtype=Argument('dtype'))
+@tensor_compat(return_dtype=Arg('dtype'))
 def argmax(input, axis=None, dtype='int64', name=None):
     """Index of the maximum value along an axis.
 
@@ -324,7 +333,7 @@ def invert_permutation(perm, name=None):
         return iperm
 
 
-@tensor_compat
+@tensor_compat(return_dtype=symbolik.result_dtype(Arg('a'), Arg('b')))
 def matmul(a, b, transpose_a=False, transpose_b=False,
            adjoint_a=False, adjoint_b=False, name=None):
     """Matrix multiplication between (fields of) matrices.
@@ -358,6 +367,9 @@ def matmul(a, b, transpose_a=False, transpose_b=False,
 
     """
     if has_tensor([a, b], 'tf'):
+        return_dtype = result_dtype(a, b)
+        a = cast(a, return_dtype)
+        b = cast(b, return_dtype)
         a = expand_dims(a, axis=0, ndim=maximum(0, rank(b)-rank(a)))
         b = expand_dims(b, axis=0, ndim=maximum(0, rank(a)-rank(b)))
         return tf.linalg.matmul(a, b, transpose_a, transpose_b,
@@ -384,7 +396,54 @@ def matmul(a, b, transpose_a=False, transpose_b=False,
 mm = matmul
 
 
-@tensor_compat
+@tensor_compat(return_dtype=symbolik.result_dtype(Arg('a'), Arg('b')))
+def matvec(a, b, transpose_a=False, adjoint_a=False, name=None):
+    """Matrix multiplication between (fields of) matrices.
+
+    Parameters
+    ----------
+    a : (..., N, K) tensor_like
+        Left matrix.
+    b : (..., K) tensor_like
+        Right matrix.
+    transpose_a : bool, default=False
+        If True, transpose the last two dimensions of ``a``.
+    adjoint_a : bool, default=False
+        If True, conjugate transpose the last two dimensions of ``a``.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    prod : (..., N) tensor or array
+        Matrix-vector product ``a @ b``.
+
+    Broadcasting rules
+    ------------------
+    * Dimensions of length 1 may be prepended to either tensor.
+    * Tensors may be repeated along dimensions of length 1.
+
+    """
+    if has_tensor([a, b], 'tf'):
+        return_dtype = result_dtype(a, b)
+        a = cast(a, return_dtype)
+        b = cast(b, return_dtype)
+        a = expand_dims(a, axis=0, ndim=maximum(0, rank(b)+1-rank(a)))
+        b = expand_dims(b, axis=0, ndim=maximum(0, rank(a)-rank(b)-1))
+        return tf.linalg.matvec(a, b, transpose_a, adjoint_a, name=name)
+    else:
+        a = expand_dims(a, axis=0, ndim=maximum(0, rank(b)+1-rank(a)))
+        b = expand_dims(b, axis=0, ndim=maximum(0, rank(a)-rank(b)-1))
+        if adjoint_a:
+            perm = concat((range(rank(a)-2), [-1, -2]))
+            a = np.conjugate(np.transpose(a, perm))
+        elif transpose_a:
+            perm = concat((range(rank(a)-2), [-1, -2]))
+            a = np.transpose(a, perm)
+        return np.matmul(a, b[..., None])[..., 0]
+
+
+@tensor_compat(return_dtype=symbolik.result_dtype(Arg('a'), Arg('b')))
 def lstsq(a, b, l2_regularizers=None, rcond=None, name=None):
     r"""Least-square solution of a (field of) linear systems.
 
@@ -434,13 +493,16 @@ def lstsq(a, b, l2_regularizers=None, rcond=None, name=None):
         else:
             fast = True
         l2_regularizers = cast(l2_regularizers, 'double')
+        return_dtype = result_dtype(a, b)
+        a = cast(a, return_dtype)
+        b = cast(b, return_dtype)
         return tf.linalg.lstsq(a, b, l2_regularizers=l2_regularizers,
                                fast=fast, name=name)
     else:
         return np.linalg.lstsq(a, b, rcond=rcond)[0]
 
 
-@tensor_compat
+@tensor_compat(return_dtype=symbolik.result_dtype(Arg('a'), Arg('b')))
 def lmdiv(a, b, l2_regularizers=None, rcond=None, name='lmdiv'):
     r"""Left matrix division A\B.
 
@@ -448,6 +510,13 @@ def lmdiv(a, b, l2_regularizers=None, rcond=None, name='lmdiv'):
     ----------
     a : (M, [N]) tensor_like
     b : (M, [K]) tensor_like
+
+    l2_regularizers : () tensor_like[float], default=None
+        See `lstsq`.
+    rcond : float, default=None
+        See `lstsq`.
+    name : str, optional
+        Name for the operation.
 
     Returns
     -------
@@ -461,7 +530,7 @@ def lmdiv(a, b, l2_regularizers=None, rcond=None, name='lmdiv'):
     return x
 
 
-@tensor_compat
+@tensor_compat(return_dtype=symbolik.result_dtype(Arg('a'), Arg('b')))
 def rmdiv(a, b, l2_regularizers=None, rcond=None, name='rmdiv'):
     r"""Right matrix division A/B.
 
@@ -469,6 +538,13 @@ def rmdiv(a, b, l2_regularizers=None, rcond=None, name='rmdiv'):
     ----------
     a : (M, [N]) tensor_like
     b : (K, [N]) tensor_like
+
+    l2_regularizers : () tensor_like[float], default=None
+        See `lstsq`.
+    rcond : float, default=None
+        See `lstsq`.
+    name : str, optional
+        Name for the operation.
 
     Returns
     -------
@@ -909,11 +985,95 @@ def exp(input, name=None):
 
 @tensor_compat(map_batch=False)
 def log(input, name=None):
-    """Element-wise Natural logarithm of a tensor."""
+    """Element-wise natural logarithm of a tensor."""
     if is_tensor(input, 'tf'):
         return tf.math.log(input, name=name)
     else:
         return np.log(input)
+
+
+@tensor_compat(map_batch=False)
+def sin(input, name=None):
+    """Element-wise sine of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.sin(input, name=name)
+    else:
+        return np.sin(input)
+
+
+@tensor_compat(map_batch=False)
+def sinh(input, name=None):
+    """Element-wise hyperbolic sine of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.sinh(input, name=name)
+    else:
+        return np.sinh(input)
+
+
+@tensor_compat(map_batch=False)
+def asin(input, name=None):
+    """Element-wise arc-sine of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.asin(input, name=name)
+    else:
+        return np.arcsin(input)
+
+
+arcsin = asin
+
+
+@tensor_compat(map_batch=False)
+def asinh(input, name=None):
+    """Element-wise hyperbolic arc-sine of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.asinh(input, name=name)
+    else:
+        return np.arcsinh(input)
+
+
+arcsinh = asinh
+
+
+@tensor_compat(map_batch=False)
+def cos(input, name=None):
+    """Element-wise cosine of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.cos(input, name=name)
+    else:
+        return np.cos(input)
+
+
+@tensor_compat(map_batch=False)
+def cosh(input, name=None):
+    """Element-wise hyperbolic cosine of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.cosh(input, name=name)
+    else:
+        return np.cosh(input)
+
+
+@tensor_compat(map_batch=False)
+def acos(input, name=None):
+    """Element-wise arc-cosine of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.acos(input, name=name)
+    else:
+        return np.arccos(input)
+
+
+arccos = acos
+
+
+@tensor_compat(map_batch=False)
+def acosh(input, name=None):
+    """Element-wise hyperbolic arc-cosine of a tensor."""
+    if is_tensor(input, 'tf'):
+        return tf.math.acosh(input, name=name)
+    else:
+        return np.arccosh(input)
+
+
+arccosh = acosh
 
 
 @tensor_compat

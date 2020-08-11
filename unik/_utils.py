@@ -38,14 +38,14 @@ def pop(obj, *args, **kwargs):
                          .format(len(args)+2))
     if 'elem' in kwargs.keys():
         if elem_known:
-            raise ValueError('Argument `elem` cannot be passed as both a '
+            raise ValueError('Arg `elem` cannot be passed as both a '
                              'positional and keyword.')
         else:
             elem = kwargs.pop('elem')
             elem_known = True
     if 'default' in kwargs.keys():
         if default_known:
-            raise ValueError('Argument `default` cannot be passed as both a '
+            raise ValueError('Arg `default` cannot be passed as both a '
                              'positional and keyword.')
         else:
             default = kwargs.pop('default')
@@ -66,7 +66,7 @@ def pop(obj, *args, **kwargs):
     # --- DICT ---
     elif isinstance(obj, dict):
         if not elem_known:
-            raise ValueError('Argument `elem` is mandatory for type dict.')
+            raise ValueError('Arg `elem` is mandatory for type dict.')
         if default_known:
             value = obj.pop(elem, default)
         else:

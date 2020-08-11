@@ -3,7 +3,8 @@ import tensorflow as tf
 import numpy as np
 
 from .magik import tensor_compat
-from .types import cast, is_tensor, has_tensor, as_tensor, convert_dtype
+from .types import cast, is_tensor, has_tensor, as_tensor, convert_dtype, \
+                    result_dtype
 from .various import name_tensor
 from ._cond import cond
 
@@ -121,6 +122,8 @@ def flatten(input, name=None):
 def stack(inputs, axis=0, name='stack'):
     """Stack tensors / arrays."""
     if has_tensor(inputs, 'tf'):
+        return_dtype = result_dtype(*inputs)
+        inputs = [cast(inp, return_dtype) for inp in inputs]
         inputs = tf.stack(inputs, axis, name=name)
     else:
         inputs = np.stack(inputs, axis)
@@ -149,6 +152,8 @@ def unstack(input, num=None, axis=0, name='unstack'):
 def concat(inputs, axis=0, name='concat'):
     """Concatenate tensors / arrays."""
     if has_tensor(inputs, 'tf'):
+        return_dtype = result_dtype(*inputs)
+        inputs = [cast(inp, return_dtype) for inp in inputs]
         inputs = tf.concat(inputs, axis, name=name)
     elif has_tensor(inputs, 'np'):
         inputs = np.concatenate(inputs, axis)
