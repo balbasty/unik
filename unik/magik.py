@@ -5,28 +5,19 @@ tensorflow static tensors and keras tensors. This module defines helpers
 that help reaching this goal.
 
 """
-import types
 import inspect
 import functools
 import numpy as np
 import tensorflow as tf
 
-from ._utils import pop, _apply_nested
+from ._utils import _apply_nested
 from ._tensor_types import is_tensor, has_tensor, convert_dtype
 
 
-def _get_keras_from_tensor(x):
-    """Return 'keras' or 'tensorflow' depending on which keras
-    implementation was used to initialize `x`."""
-    if not is_tensor(x, 'k'):
-        raise TypeError('Expected Keras tensor '
-                        '(with attribute `_keras_history). '
-                        'Got a {}.'.format(type(x)))
-    layer, _, _ = x._keras_history
-    module = layer.__module__.split('.')[0]
-    if module not in ('keras', 'tensorflow'):
-        raise ValueError('Unknown keras module: {}'.format(module))
-    return module
+_all__ = ['Value', 'Argument', 'tensor_compat']
+
+
+# --- SYMBOLIC ---------------------------------------------------------
 
 
 class Value:
@@ -123,6 +114,28 @@ def get_argument_value(arg_name, func, args=None, kwargs=None,
         return arg_value, arg_default
     else:
         return arg_value
+
+
+def symbolik_helper(func):
+    """Decorator / Factory for symbolic helper."""
+
+    @functools.wraps(func)
+    def wrap(*args, **kwargs):
+
+        def implementation(f, fargs, fkwargs):
+            # Evaluate all symbolic objects
+            apply = lambda x: (x(f, fargs, fkwargs) if isinstance(x, Value)
+                               else x)
+            processed_args = _apply_nested(args, apply)
+            processed_kwargs = _apply_nested(kwargs, apply)
+            # Compute return type
+            return func(*processed_args, **processed_kwargs)
+
+        return Value(implementation)
+
+
+
+# --- DECORATOR --------------------------------------------------------
 
 
 def tensor_compat(map_batch=True, return_dtype=None):
@@ -241,21 +254,23 @@ def tensor_compat(map_batch=True, return_dtype=None):
             """If the input contains Keras tensors and we're not inside
             the keras graph, wrap the function in a Lambda layer."""
 
-            # Evaluate return_dtype if it is a symbolic value.
-            # It must be done before extracting keras tensors.
-            def evaluate(value):
-                if isinstance(value, Value):
-                    return value(func, args, kwargs)
-                else:
-                    return value
-            _return_dtype = _apply_nested(return_dtype, evaluate)
-
             # print(func.__name__, tf.executing_eagerly(), has_tensor([args, kwargs], 'k'))
             if tf.executing_eagerly() and has_tensor([args, kwargs], 'k'):
+
+                # Evaluate return_dtype if it is a symbolic value.
+                # It must be done before extracting keras tensors.
+                def evaluate(value):
+                    if isinstance(value, Value):
+                        return value(func, args, kwargs)
+                    else:
+                        return value
+
+                _return_dtype = _apply_nested(return_dtype, evaluate)
+
                 # Split tensor and non-tensor arguments
                 args, kwargs, inp = extract_tf(args, kwargs)
 
-                # Select apropriate keras module (internal or external)
+                # Select appropriate keras module (internal or external)
                 which_keras = _get_keras_from_tensor(inp[0])
                 if which_keras.lower() == 'keras':
                     from keras.layers import Lambda
@@ -281,6 +296,17 @@ def tensor_compat(map_batch=True, return_dtype=None):
     return decorator
 
 
-
+def _get_keras_from_tensor(x):
+    """Return 'keras' or 'tensorflow' depending on which keras
+    implementation was used to initialize `x`."""
+    if not is_tensor(x, 'k'):
+        raise TypeError('Expected Keras tensor '
+                        '(with attribute `_keras_history). '
+                        'Got a {}.'.format(type(x)))
+    layer, _, _ = x._keras_history
+    module = layer.__module__.split('.')[0]
+    if module not in ('keras', 'tensorflow'):
+        raise ValueError('Unknown keras module: {}'.format(module))
+    return module
 
 

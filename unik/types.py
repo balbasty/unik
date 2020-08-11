@@ -7,6 +7,10 @@ from .various import name_tensor
 from ._utils import _apply_nested
 
 
+__all__ = ['is_tensor', 'has_tf_tensor', 'has_tensor', 'convert_dtype',
+           'dtype', 'as_tensor', 'cast']
+
+
 # These are defined in a different file to avoid cross-dependencies
 from ._tensor_types import is_tensor, has_tensor, convert_dtype
 
@@ -115,3 +119,26 @@ def cast(input, dtype, keep_none=False, name=None):
         dtype = convert_dtype(dtype, 'np')
         input = np.asarray(input).astype(dtype).item()
     return input
+
+
+def result_dtype(*arrays_and_dtypes):
+    """Returns the type that results from applying type promotion.
+
+    Tensorflow usually does not perform type promotion. We therefore
+    use numpy's promotion rules. If inputs are `tf.tensor`s, we
+    manually cast them to the appropriate return type before performing
+    the operation. This is less efficient than what happens with
+    `np.ndarray`s.
+
+    Parameters
+    ----------
+    arrays_and_dtypes : iterable
+        Data types of the arguments.
+
+    """
+    arrays_and_dtypes = [a.dtype if is_tensor(a, 'tf') else a
+                         for a in arrays_and_dtypes]
+    arrays_and_dtypes = [convert_dtype(dt, 'np')
+                         if isinstance(dt, tf.dtypes.DType)
+                         else dt for dt in arrays_and_dtypes]
+    return np.result_type(*arrays_and_dtypes)

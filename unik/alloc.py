@@ -60,6 +60,7 @@ def fill(shape, value, dtype=None, name=None):
         value = cast(value, dtype)
         return tf.fill(value, shape, name)
     else:
+        dtype = convert_dtype(dtype, 'np')
         return np.full(shape, value, dtype)
 
 
@@ -73,6 +74,7 @@ def fill_like(input, value, shape=None, dtype=None, name=None):
         return tf.fill(value, input.shape, name)
     else:
         dtype = dtype or input.dtype
+        dtype = convert_dtype(dtype, 'np')
         if shape is None:
             return np.full_like(input, value, dtype=dtype)
         else:
@@ -98,8 +100,10 @@ def eye(num_rows, num_columns=None, batch_shape=None, dtype='float32',
 
     """
     if has_tensor([num_rows, num_columns, batch_shape], 'tf'):
+        dtype = convert_dtype(dtype, 'tf')
         mat = tf.eye(num_rows, num_columns, batch_shape, dtype, name)
     else:
+        dtype = convert_dtype(dtype, 'np')
         mat = np.eye(num_rows, num_columns, dtype=dtype)
         if batch_shape is not None:
             mat = np.expand_dims(mat, ndim=length(batch_shape))
@@ -111,6 +115,7 @@ def eye(num_rows, num_columns=None, batch_shape=None, dtype='float32',
 def one_hot(indices, depth, on_value=None, off_value=None, axis=None,
             dtype=None, name=None):
     if has_tensor([indices, on_value, off_value], 'tf'):
+        dtype = convert_dtype(dtype, 'tf')
         return tf.one_hot(indices, depth, on_values=on_value,
                           off_values=off_value, dtype=dtype, name=name)
     else:
@@ -133,7 +138,11 @@ def one_hot(indices, depth, on_value=None, off_value=None, axis=None,
 
 @tensor_compat
 def range(*args, **kwargs):
-    """Either tf.range or np.arange.
+    """Generate a range vector.
+
+    Signature
+    ---------
+    range(start=0, stop, step=1, dtype=None, name=None)
 
     Parameters
     ----------
