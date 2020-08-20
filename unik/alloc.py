@@ -199,3 +199,26 @@ def diag(input, k=0, name='diag'):
                     name=name)
     else:
         return np.diag(input, k=k)
+
+
+@tensor_compat(map_batch=False)
+def copy(input, name=None):
+    """Copy a tensor.
+
+    Parameters
+    ----------
+    input : tensor_like
+        Input tensor.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    copied : tensor or array
+        Copied tensor.
+
+    """
+    if is_tensor(input, 'tf'):
+        return tf.identity(input, name=name)
+    else:
+        return np.copy(input)

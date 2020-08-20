@@ -133,7 +133,7 @@ def _build_reduction(tf_op, np_op, py_op=None, docline='', use_dtype=True):
 # --- BUILD FROM FACTORY -----------------------------------------------
 
 
-tfm = tf.math
+import tensorflow.math as tfm
 sum = _build_reduction(tfm.reduce_sum, np.sum, op.add, 'Sum')
 prod = _build_reduction(tfm.reduce_prod, np.prod, op.mul, 'Product')
 all = _build_reduction(tfm.reduce_all, np.all, op.and_, '"Logical and"')

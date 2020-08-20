@@ -1,7 +1,7 @@
 """Math / Linear algebra."""
 import tensorflow as tf
 import numpy as np
-import scipy as sp
+import scipy.linalg as spl
 
 from .magik import tensor_compat, Arg, Val
 from . import symbolik
@@ -12,7 +12,7 @@ from .shapes import rank, size, length, shape, expand_dims, \
                     concat, stack, tile
 from .alloc import ones, range
 from .indexing import boolean_mask, gather
-from .controlflow import while_loop, cond
+from .controlflow import while_loop, cond, map_fn
 from .various import name_tensor
 
 
@@ -48,7 +48,7 @@ def tensordot(a, b, axes, name=None):
 
     Returns
     -------
-    c : tensor or array
+    c : tensor_or_array
         rank(c) = rank(a) + rank(b) - K
 
     """
@@ -78,7 +78,7 @@ def round(input, decimals=0, name=None):
 
     Returns
     -------
-    rounded : tensor or array
+    rounded : tensor_or_array
         Rounded tensor.
 
     """
@@ -104,7 +104,7 @@ def floor(input, name=None):
 
     Returns
     -------
-    floored : tensor or array
+    floored : tensor_or_array
 
     """
     if is_tensor(input, 'tf'):
@@ -127,7 +127,7 @@ def ceil(input, name=None):
 
     Returns
     -------
-    ceiled : tensor or array
+    ceiled : tensor_or_array
 
     """
     if is_tensor(input, 'tf'):
@@ -154,7 +154,7 @@ def clip(input, clip_min, clip_max, name=None):
 
     Returns
     -------
-    clipped : tensor or array
+    clipped : tensor_or_array
 
     """
     if has_tensor([input, clip_min, clip_max], 'tf'):
@@ -319,7 +319,7 @@ def invert_permutation(perm, name=None):
 
     Returns
     -------
-    iperm : (length, ) tensor or array
+    iperm : (length, ) tensor_or_array
         The inverse permutation.
 
     """
@@ -357,7 +357,7 @@ def matmul(a, b, transpose_a=False, transpose_b=False,
 
     Returns
     -------
-    prod : (..., N, M) tensor or array
+    prod : (..., N, M) tensor_or_array
         Matrix product ``a @ b``.
 
     Broadcasting rules
@@ -415,7 +415,7 @@ def matvec(a, b, transpose_a=False, adjoint_a=False, name=None):
 
     Returns
     -------
-    prod : (..., N) tensor or array
+    prod : (..., N) tensor_or_array
         Matrix-vector product ``a @ b``.
 
     Broadcasting rules
@@ -452,12 +452,12 @@ def lstsq(a, b, l2_regularizers=None, rcond=None, name=None):
     a : (..., M, N) tensor_like
         Left matrix.
 
-        .. np:: Fields not accepted.
+        .. np:: Fields are not vectorized. Expect something slow.
 
     b : (..., M, K) tensor_like
         Right matrix.
 
-        .. np:: Fields not accepted.
+        .. np:: Fields are not vectorized. Expect something slow.
 
     l2_regularizers : () tensor_like[float], default=None
         .. tf:: If not `None` an algorithm based on the
@@ -482,7 +482,7 @@ def lstsq(a, b, l2_regularizers=None, rcond=None, name=None):
 
     Returns
     -------
-    x : (..., N, K) tensor or array
+    x : (..., N, K) tensor_or_array
         Solution of the linear system, e.g., `a \ b`
 
     """
@@ -499,7 +499,29 @@ def lstsq(a, b, l2_regularizers=None, rcond=None, name=None):
         return tf.linalg.lstsq(a, b, l2_regularizers=l2_regularizers,
                                fast=fast, name=name)
     else:
-        return np.linalg.lstsq(a, b, rcond=rcond)[0]
+        a = expand_dims(a, maximum(rank(b)-rank(a), 0))
+        b = expand_dims(a, maximum(rank(a)-rank(b), 0))
+        a_shape = shape(a)
+        a_mat_shape = a_shape[-2:]
+        a_shape = a_shape[:-2]
+        b_shape = shape(b)
+        b_mat_shape = b_shape[-2:]
+        b_shape = b_shape[:-2]
+        shape_compat = [(sa == sb or sa == 1 or sb == 1)
+                        for sa, sb in zip(a_shape, b_shape)]
+        if not all(shape_compat):
+            raise ValueError('shape mismatch: objects cannot be broadcast '
+                             'to a single shape')
+        out_shape = [maximum(sa, sb) for sa, sb in zip(a_shape, b_shape)]
+        out_mat_shape = [shape(a)[-1], shape(b)[-1]]
+        tile_a = [so//sa for so, sa in zip(out_shape, a_shape)] + [1, 1]
+        tile_b = [so//sb for so, sb in zip(out_shape, b_shape)] + [1, 1]
+        a = reshape(tile(a, tile_a), [-1] + a_mat_shape)
+        b = reshape(tile(b, tile_b), [-1] + b_mat_shape)
+        out = map_fn(lambda x, y: np.linalg.lstsq(x, y, recond=rcond)[0],
+                     a, b)
+        out = reshape(out, out_shape + out_mat_shape)
+        return out
 
 
 @tensor_compat(return_dtype=symbolik.result_dtype(Arg('a'), Arg('b')))
@@ -520,7 +542,7 @@ def lmdiv(a, b, l2_regularizers=None, rcond=None, name='lmdiv'):
 
     Returns
     -------
-    X : (N, [K]) tensor or array
+    X : (N, [K]) tensor_or_array
 
     """
     a = as_tensor(a)
@@ -548,7 +570,7 @@ def rmdiv(a, b, l2_regularizers=None, rcond=None, name='rmdiv'):
 
     Returns
     -------
-    x : (M, K) tensor or array
+    x : (M, K) tensor_or_array
 
     """
     a = as_tensor(a)
@@ -627,7 +649,7 @@ def factorial(x, name=None):
 
     Returns
     -------
-    factorial : tensor or array
+    factorial : tensor_or_array
 
     """
     if is_tensor(x, 'tf'):
@@ -667,7 +689,7 @@ def unique(input, return_index=False, return_inverse=False,
 
     Returns
     -------
-    unique : (K,) tensor or array
+    unique : (K,) tensor_or_array
         Unique elements of the input vector, ordered by first apparition.
     index : (K,) tensor[index_dtype] or array[index_dtype]
         First index of each unique element in the input vector.
@@ -719,7 +741,7 @@ def cartesian(input, shape=None, flatten=True):
 
     Returns
     -------
-    cart : (*arrangements, *shape) tensor or array
+    cart : (*arrangements, *shape) tensor_or_array
         All possible arrangements of values in the input ranges,
         laid out as specified by the input shape.
 
@@ -902,7 +924,7 @@ def permutations(input, shape=None):
 
     Returns
     -------
-    perm : (output_length, *shape) tensor or array
+    perm : (output_length, *shape) tensor_or_array
         All possible permutations of the input set.
         `output_length` = TODO
 
@@ -1076,27 +1098,77 @@ def acosh(input, name=None):
 arccosh = acosh
 
 
-@tensor_compat
+@tensor_compat(map_batch=False)
 def expm(input, name=None):
     """Matrix exponential of (a field of) tensors / arrays.
 
-    WARNING: tf supports fields of matrices but np only support pure
-             matrices (rank(input) == 2).
+    Parameters
+    ----------
+    input : (..., M, M) tensor_like[float or complex]
+        Input field of matrices.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    output : (..., M, M) tensor_or_array
+        Output field of matrices, with same data type as the input.
+
+    Notes
+    -----
+    ..  Applying this function to fields of numpy matrices is quite
+        slow, as it is not vectorized.
+
     """
     if is_tensor(input, 'tf'):
         return tf.linalg.expm(input, name=name)
     else:
-        return sp.linalg.expm(input)
+        in_shape = list(shape(input))
+        mat_shape = in_shape[-2:]
+        input = reshape(input, [-1] + mat_shape)
+        input = map_fn(spl.expm, input)
+        input = reshape(input, in_shape)
+        return input
 
 
-@tensor_compat
+@tensor_compat(map_batch=False)
 def logm(input, name=None):
     """Matrix logarithm of (a field of) tensors / arrays.
 
-    WARNING: tf supports fields of matrices but np only support pure
-             matrices (rank(input) == 2).
+    Parameters
+    ----------
+    input : (..., M, M) tensor_like[float or complex]
+        Input field of matrices.
+    name : str, optional
+        A name for the operation.
+
+    Returns
+    -------
+    output : (..., M, M) tensor_or_array
+        Output field of matrices, with same data type as the input.
+
+    Notes
+    -----
+    ..  Applying this function to fields of numpy matrices is quite
+        slow, as it is not vectorized.
+    ..  In tensorflow, it is only implemented for complex matrices.
+        When applied to real matrices, two implicit conversions are
+        therefore performed, before and after the logarithm.
+
     """
     if is_tensor(input, 'tf'):
-        return tf.linalg.logm(input, name=name)
+        in_dtype = input.dtype
+        if in_dtype == 'float32':
+            input = cast(input, 'complex64')
+        elif in_dtype == 'float64':
+            input = cast(input, 'complex128')
+        input = tf.linalg.logm(input)
+        input = cast(input, in_dtype)
+        return name_tensor(input, name)
     else:
-        return sp.linalg.logm(input)
+        in_shape = list(shape(input))
+        mat_shape = in_shape[-2:]
+        input = reshape(input, [-1] + mat_shape)
+        input = map_fn(spl.logm, input)
+        input = reshape(input, in_shape)
+        return input

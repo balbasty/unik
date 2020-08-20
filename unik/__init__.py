@@ -1,4 +1,5 @@
 from .alloc import *
+from .constants import *
 from .controlflow import *
 from .debug import *
 from .indexing import *
@@ -9,6 +10,7 @@ from .types import *
 from .various import *
 
 from . import alloc
+from . import constants
 from . import controlflow
 from . import debug
 from . import indexing
