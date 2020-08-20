@@ -136,8 +136,8 @@ def _build_reduction(tf_op, np_op, py_op=None, docline='', use_dtype=True):
 import tensorflow.math as tfm
 sum = _build_reduction(tfm.reduce_sum, np.sum, op.add, 'Sum')
 prod = _build_reduction(tfm.reduce_prod, np.prod, op.mul, 'Product')
-all = _build_reduction(tfm.reduce_all, np.all, op.and_, '"Logical and"')
-any = _build_reduction(tfm.reduce_any, np.any, op.or_, '"Logical or"')
+all = _build_reduction(tfm.reduce_all, np.all, op.and_, '"Logical and"', use_dtype=False)
+any = _build_reduction(tfm.reduce_any, np.any, op.or_, '"Logical or"', use_dtype=False)
 max = _build_reduction(tfm.reduce_max, np.max, docline='Maximum', use_dtype=False)
 min = _build_reduction(tfm.reduce_min, np.min, docline='Minimum', use_dtype=False)
 mean = _build_reduction(tfm.reduce_mean, np.mean, docline='Mean')

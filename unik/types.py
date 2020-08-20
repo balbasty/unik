@@ -68,7 +68,7 @@ def as_tensor(input, force=None, dtype=None, name=None):
     elif force is None:
         if is_tensor(input):
             pass
-        elif tf.executing_eagerly() or tf.is_tensor(input):
+        elif has_tensor(input, 'tf'):
             input = tf.convert_to_tensor(input)
         else:
             input = np.asarray(input)
@@ -137,7 +137,7 @@ def result_dtype(*arrays_and_dtypes):
 
     """
     arrays_and_dtypes = [a.dtype if is_tensor(a, 'tf')
-                         else as_tensor(a) if isinstance(a, (list, tuple))
+                         else as_tensor(a, 'np') if isinstance(a, (list, tuple))
                          else a
                          for a in arrays_and_dtypes]
     arrays_and_dtypes = [convert_dtype(dt, 'np')

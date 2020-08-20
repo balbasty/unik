@@ -1,6 +1,11 @@
 """Math / Linear algebra."""
 import tensorflow as tf
 import numpy as np
+import scipy as sp
+
+import tensorflow.linalg as tfl
+import tensorflow.math as tfm
+import numpy.linalg as npl
 import scipy.linalg as spl
 
 from .magik import tensor_compat, Arg, Val
@@ -15,6 +20,9 @@ from .indexing import boolean_mask, gather
 from .controlflow import while_loop, cond, map_fn
 from .various import name_tensor
 
+py_all = all
+py_any = any
+py_sum = sum
 
 __all__ = ['cumprod', 'minimum', 'maximum', 'cumsum', 'sum', 'prod',
            'any', 'all', 'min', 'max', 'tensordot', 'round', 'floor',
@@ -509,17 +517,17 @@ def lstsq(a, b, l2_regularizers=None, rcond=None, name=None):
         b_shape = b_shape[:-2]
         shape_compat = [(sa == sb or sa == 1 or sb == 1)
                         for sa, sb in zip(a_shape, b_shape)]
-        if not all(shape_compat):
+        if not py_all(shape_compat):
             raise ValueError('shape mismatch: objects cannot be broadcast '
                              'to a single shape')
-        out_shape = [maximum(sa, sb) for sa, sb in zip(a_shape, b_shape)]
-        out_mat_shape = [shape(a)[-1], shape(b)[-1]]
-        tile_a = [so//sa for so, sa in zip(out_shape, a_shape)] + [1, 1]
-        tile_b = [so//sb for so, sb in zip(out_shape, b_shape)] + [1, 1]
-        a = reshape(tile(a, tile_a), [-1] + a_mat_shape)
-        b = reshape(tile(b, tile_b), [-1] + b_mat_shape)
-        out = map_fn(lambda x, y: np.linalg.lstsq(x, y, recond=rcond)[0],
-                     a, b)
+        out_shape = tuple(maximum(sa, sb) for sa, sb in zip(a_shape, b_shape))
+        out_mat_shape = (shape(a)[-1], shape(b)[-1])
+        tile_a = [so//sa for so, sa in zip(out_shape, a_shape)] + (1, 1)
+        tile_b = [so//sb for so, sb in zip(out_shape, b_shape)] + (1, 1)
+        a = reshape(tile(a, tile_a), (-1,) + a_mat_shape)
+        b = reshape(tile(b, tile_b), (-1,) + b_mat_shape)
+        out = map_fn(lambda x: np.linalg.lstsq(x[0], x[1], rcond=rcond)[0],
+                     [a, b])
         out = reshape(out, out_shape + out_mat_shape)
         return out
 
